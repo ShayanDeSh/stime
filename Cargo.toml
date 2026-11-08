@@ -1,0 +1,7 @@
+[package]
+name = "stime"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cudarc = { version = "0.19.10", default-features = false, features = ["driver", "dynamic-loading", "cuda-12090", "std"] }
