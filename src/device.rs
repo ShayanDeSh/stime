@@ -3,12 +3,12 @@ use std::sync::OnceLock;
 use cudarc::driver::result;
 use cudarc::driver::sys::{CUdevice, CUdevice_attribute};
 
-use crate::Result;
+use crate::{Error, Result};
 
 /// Calls `cuInit` once per process.
 fn init() -> Result<()> {
     static INIT: OnceLock<Result<()>> = OnceLock::new();
-    *INIT.get_or_init(result::init)
+    *INIT.get_or_init(|| result::init().map_err(Error::from))
 }
 
 /// A CUDA-capable device.
@@ -43,13 +43,13 @@ impl Device {
     }
 
     pub fn name(&self) -> Result<String> {
-        result::device::get_name(self.raw)
+        Ok(result::device::get_name(self.raw)?)
     }
 
     /// Total device memory in bytes.
     pub fn total_memory(&self) -> Result<usize> {
         // SAFETY: `self.raw` was returned by `result::device::get`.
-        unsafe { result::device::total_mem(self.raw) }
+        Ok(unsafe { result::device::total_mem(self.raw) }?)
     }
 
     /// Compute capability as `(major, minor)`.

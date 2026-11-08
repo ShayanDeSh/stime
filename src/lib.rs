@@ -1,6 +1,7 @@
 mod device;
+mod error;
+mod memory;
 
-pub use cudarc::driver::DriverError as Error;
 pub use device::Device;
-
-pub type Result<T> = std::result::Result<T, Error>;
+pub use error::{Error, Result};
+pub use memory::DeviceBuffer;
