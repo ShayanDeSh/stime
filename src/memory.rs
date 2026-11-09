@@ -46,6 +46,11 @@ impl<T: DeviceRepr> DeviceBuffer<T> {
         Ok(buf)
     }
 
+    /// Address of the device pointer, for use as a kernel parameter.
+    pub(crate) fn device_ptr_ref(&self) -> *const CUdeviceptr {
+        &self.ptr
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }

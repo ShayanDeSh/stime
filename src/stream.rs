@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use cudarc::driver::sys::CUstream;
 use cudarc::driver::{CudaContext, CudaStream};
 
 use crate::{Device, Result};
@@ -18,6 +19,10 @@ impl Stream {
         Ok(Self {
             inner: ctx.new_stream()?,
         })
+    }
+
+    pub(crate) fn raw(&self) -> CUstream {
+        self.inner.cu_stream()
     }
 
     /// Blocks until all work queued on the stream has completed.
