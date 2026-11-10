@@ -10,6 +10,10 @@ pub enum Error {
     Driver(DriverError),
     /// A host slice did not have the same length as the device buffer.
     LengthMismatch { expected: usize, actual: usize },
+    /// A task that has already been launched was launched again.
+    TaskAlreadyLaunched,
+    /// A task was waited on before being launched.
+    TaskNotLaunched,
 }
 
 impl fmt::Display for Error {
@@ -20,6 +24,8 @@ impl fmt::Display for Error {
                 f,
                 "length mismatch: buffer has {expected} elements, host slice has {actual}"
             ),
+            Error::TaskAlreadyLaunched => write!(f, "task has already been launched"),
+            Error::TaskNotLaunched => write!(f, "task has not been launched"),
         }
     }
 }
@@ -28,7 +34,9 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Error::Driver(e) => Some(e),
-            Error::LengthMismatch { .. } => None,
+            Error::LengthMismatch { .. } | Error::TaskAlreadyLaunched | Error::TaskNotLaunched => {
+                None
+            }
         }
     }
 }
