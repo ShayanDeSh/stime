@@ -5,6 +5,7 @@ mod kernel;
 mod memory;
 mod stream;
 mod task;
+mod worker;
 
 pub use device::Device;
 pub use error::{Error, Result};
@@ -13,3 +14,4 @@ pub use kernel::{Kernel, KernelArg, LaunchConfig, Module};
 pub use memory::DeviceBuffer;
 pub use stream::Stream;
 pub use task::{KernelArgs, Task, TaskState};
+pub use worker::{TaskHandle, Worker};

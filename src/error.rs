@@ -14,6 +14,8 @@ pub enum Error {
     TaskAlreadyLaunched,
     /// A task was waited on before being launched.
     TaskNotLaunched,
+    /// The worker thread exited before it could take or hand back a task.
+    WorkerStopped,
 }
 
 impl fmt::Display for Error {
@@ -26,6 +28,7 @@ impl fmt::Display for Error {
             ),
             Error::TaskAlreadyLaunched => write!(f, "task has already been launched"),
             Error::TaskNotLaunched => write!(f, "task has not been launched"),
+            Error::WorkerStopped => write!(f, "worker thread has stopped"),
         }
     }
 }
@@ -34,9 +37,10 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Error::Driver(e) => Some(e),
-            Error::LengthMismatch { .. } | Error::TaskAlreadyLaunched | Error::TaskNotLaunched => {
-                None
-            }
+            Error::LengthMismatch { .. }
+            | Error::TaskAlreadyLaunched
+            | Error::TaskNotLaunched
+            | Error::WorkerStopped => None,
         }
     }
 }
