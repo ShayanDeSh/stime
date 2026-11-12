@@ -1,31 +1,8 @@
-use stime::{Device, DeviceBuffer, Error, LaunchConfig, Module, Stream, Task, TaskState};
+use stime::{Device, Error, Stream, TaskState};
 
 mod common;
 
-use common::ADD_PTX;
-
-type AddArgs = (DeviceBuffer<f32>, DeviceBuffer<f32>, DeviceBuffer<f32>, u32);
-
-/// A task that adds `a` and `b` element-wise into a zeroed output buffer.
-fn add_task(device: &Device, a: &[f32], b: &[f32]) -> Task<AddArgs> {
-    let kernel = Module::from_ptx(device, ADD_PTX)
-        .unwrap()
-        .kernel(c"add")
-        .unwrap();
-    let n = a.len() as u32;
-    let config = LaunchConfig {
-        grid_dim: (n.div_ceil(128), 1, 1),
-        block_dim: (128, 1, 1),
-        shared_mem_bytes: 0,
-    };
-    let args = (
-        DeviceBuffer::from_slice(device, a).unwrap(),
-        DeviceBuffer::from_slice(device, b).unwrap(),
-        DeviceBuffer::zeroed(device, a.len()).unwrap(),
-        n,
-    );
-    Task::new(kernel, config, args)
-}
+use common::add_task;
 
 #[test]
 fn new_task_is_pending() {

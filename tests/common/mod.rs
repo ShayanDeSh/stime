@@ -1,6 +1,8 @@
 // Each test binary uses only some of these items.
 #![allow(dead_code)]
 
+use stime::{Device, DeviceBuffer, LaunchConfig, Module, Task};
+
 /// PTX for `add(const float* a, const float* b, float* out, unsigned n)`: `out[i] = a[i] + b[i]`.
 pub const ADD_PTX: &std::ffi::CStr = cr#"
 .version 7.0
@@ -83,3 +85,42 @@ $L__BB0_2:
 	ret;
 }
 "#;
+
+pub type AddArgs = (DeviceBuffer<f32>, DeviceBuffer<f32>, DeviceBuffer<f32>, u32);
+pub type FillArgs = (DeviceBuffer<f32>, f32, u32);
+
+/// A launch shape covering `n` elements with 128-thread blocks.
+pub fn config(n: u32) -> LaunchConfig {
+    LaunchConfig {
+        grid_dim: (n.div_ceil(128), 1, 1),
+        block_dim: (128, 1, 1),
+        shared_mem_bytes: 0,
+    }
+}
+
+/// A task that adds `a` and `b` element-wise into a zeroed output buffer.
+pub fn add_task(device: &Device, a: &[f32], b: &[f32]) -> Task<AddArgs> {
+    let kernel = Module::from_ptx(device, ADD_PTX)
+        .unwrap()
+        .kernel(c"add")
+        .unwrap();
+    let n = a.len() as u32;
+    let args = (
+        DeviceBuffer::from_slice(device, a).unwrap(),
+        DeviceBuffer::from_slice(device, b).unwrap(),
+        DeviceBuffer::zeroed(device, a.len()).unwrap(),
+        n,
+    );
+    Task::new(kernel, config(n), args)
+}
+
+/// A task that fills a zeroed buffer of `len` elements with `value`.
+pub fn fill_task(device: &Device, len: usize, value: f32) -> Task<FillArgs> {
+    let kernel = Module::from_ptx(device, FILL_PTX)
+        .unwrap()
+        .kernel(c"fill")
+        .unwrap();
+    let n = len as u32;
+    let args = (DeviceBuffer::zeroed(device, len).unwrap(), value, n);
+    Task::new(kernel, config(n), args)
+}

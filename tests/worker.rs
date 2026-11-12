@@ -1,48 +1,10 @@
 use std::sync::Arc;
 
-use stime::{Device, DeviceBuffer, Error, LaunchConfig, Module, Stream, Task, Worker};
+use stime::{Device, DeviceBuffer, Error, Module, Stream, Task, Worker};
 
 mod common;
 
-use common::{ADD_PTX, FILL_PTX};
-
-type AddArgs = (DeviceBuffer<f32>, DeviceBuffer<f32>, DeviceBuffer<f32>, u32);
-type FillArgs = (DeviceBuffer<f32>, f32, u32);
-
-fn config(n: u32) -> LaunchConfig {
-    LaunchConfig {
-        grid_dim: (n.div_ceil(128), 1, 1),
-        block_dim: (128, 1, 1),
-        shared_mem_bytes: 0,
-    }
-}
-
-/// A task that adds `a` and `b` element-wise into a zeroed output buffer.
-fn add_task(device: &Device, a: &[f32], b: &[f32]) -> Task<AddArgs> {
-    let kernel = Module::from_ptx(device, ADD_PTX)
-        .unwrap()
-        .kernel(c"add")
-        .unwrap();
-    let n = a.len() as u32;
-    let args = (
-        DeviceBuffer::from_slice(device, a).unwrap(),
-        DeviceBuffer::from_slice(device, b).unwrap(),
-        DeviceBuffer::zeroed(device, a.len()).unwrap(),
-        n,
-    );
-    Task::new(kernel, config(n), args)
-}
-
-/// A task that fills a zeroed buffer of `len` elements with `value`.
-fn fill_task(device: &Device, len: usize, value: f32) -> Task<FillArgs> {
-    let kernel = Module::from_ptx(device, FILL_PTX)
-        .unwrap()
-        .kernel(c"fill")
-        .unwrap();
-    let n = len as u32;
-    let args = (DeviceBuffer::zeroed(device, len).unwrap(), value, n);
-    Task::new(kernel, config(n), args)
-}
+use common::{ADD_PTX, add_task, config, fill_task};
 
 fn worker(device: &Device, capacity: usize) -> Worker {
     Worker::new(Stream::new(device).unwrap(), capacity)
