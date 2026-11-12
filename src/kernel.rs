@@ -73,11 +73,20 @@ pub struct LaunchConfig {
 pub trait KernelArg {
     /// Pointer to the value of the parameter, as expected by `cuLaunchKernel`.
     fn as_param(&self) -> *mut c_void;
+
+    /// The device the argument's memory lives on, or `None` for plain values.
+    fn device(&self) -> Option<Device> {
+        None
+    }
 }
 
 impl<T: DeviceRepr> KernelArg for DeviceBuffer<T> {
     fn as_param(&self) -> *mut c_void {
         self.device_ptr_ref().cast_mut().cast()
+    }
+
+    fn device(&self) -> Option<Device> {
+        Some(DeviceBuffer::device(self))
     }
 }
 

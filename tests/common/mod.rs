@@ -1,7 +1,7 @@
 // Each test binary uses only some of these items.
 #![allow(dead_code)]
 
-use stime::{Device, DeviceBuffer, LaunchConfig, Module, Task};
+use stime::{Device, DeviceBuffer, LaunchConfig, MemoryPool, Module, Task};
 
 /// PTX for `add(const float* a, const float* b, float* out, unsigned n)`: `out[i] = a[i] + b[i]`.
 pub const ADD_PTX: &std::ffi::CStr = cr#"
@@ -105,9 +105,10 @@ pub fn add_task(device: &Device, a: &[f32], b: &[f32]) -> Task<AddArgs> {
         .kernel(c"add")
         .unwrap();
     let n = a.len() as u32;
+    let pool = MemoryPool::system(device).unwrap();
     let args = (
-        DeviceBuffer::from_slice(device, a).unwrap(),
-        DeviceBuffer::from_slice(device, b).unwrap(),
+        pool.from_slice(a).unwrap(),
+        pool.from_slice(b).unwrap(),
         DeviceBuffer::zeroed(device, a.len()).unwrap(),
         n,
     );

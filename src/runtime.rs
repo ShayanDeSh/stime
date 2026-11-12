@@ -49,19 +49,17 @@ impl Runtime {
     /// Queues `task` on the next worker in round-robin order, blocking while that worker's
     /// queue is full.
     ///
-    /// Fails with `WorkerStopped` if that worker's thread has exited. Launch and kernel errors
-    /// are reported by [`TaskHandle::wait`].
+    /// Fails with `WorkerStopped` if that worker's thread has exited. Launch and kernel errors,
+    /// including a buffer on the wrong device, are reported by [`TaskHandle::wait`].
     ///
     /// # Safety
-    /// - The task's arguments must match the kernel's parameter list in number, order and type.
-    /// - Every buffer in the task's arguments must live on the runtime's device.
+    /// The task's arguments must match the kernel's parameter list in number, order and type.
     pub unsafe fn submit<A: KernelArgs + Send + 'static>(
         &self,
         task: Task<A>,
     ) -> Result<TaskHandle<A>> {
         let index = self.next.fetch_add(1, Ordering::Relaxed) % self.workers.len();
-        // SAFETY: the caller upholds the argument contract, and every worker's stream is on the
-        // runtime's device.
+        // SAFETY: the caller upholds the argument contract.
         unsafe { self.workers[index].submit(task) }
     }
 }

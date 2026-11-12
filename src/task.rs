@@ -79,23 +79,32 @@ impl<A: KernelArgs> Task<A> {
 
     /// Queues the kernel on `stream` and returns without waiting for it to run.
     ///
-    /// Fails with `TaskAlreadyLaunched` if the task has been launched before. On any other
-    /// failure the task stays pending, though the kernel may have run if it was already queued.
+    /// Fails with `TaskAlreadyLaunched` if the task has been launched before, or with
+    /// `DeviceMismatch` if a buffer in the arguments lives on a different device than the
+    /// stream. On any other failure the task stays pending, though the kernel may have run if
+    /// it was already queued.
     ///
     /// # Safety
-    /// - `args` must match the kernel's parameter list in number, order and type.
-    /// - Every buffer in `args` must live on the stream's device.
+    /// The arguments must match the kernel's parameter list in number, order and type.
     pub unsafe fn launch(&mut self, stream: &Stream) -> Result<()> {
         if self.markers.is_some() {
             return Err(Error::TaskAlreadyLaunched);
         }
         let args = self.args.as_ref().expect("arguments are held until `wait`");
         let device = Device::get(stream.inner().context().ordinal())?;
+        if args
+            .as_args()
+            .iter()
+            .any(|arg| arg.device().is_some_and(|d| d != device))
+        {
+            return Err(Error::DeviceMismatch);
+        }
         let start = Event::new(&device)?;
         let end = Event::new(&device)?;
         start.record(stream)?;
-        // SAFETY: the caller upholds the argument contract; the task keeps the arguments alive
-        // until the kernel has finished.
+        // SAFETY: the caller upholds the argument contract, every buffer was checked to be on
+        // the stream's device, and the task keeps the arguments alive until the kernel has
+        // finished.
         unsafe { self.kernel.launch(stream, self.config, &args.as_args()) }?;
         if let Err(err) = end.record(stream) {
             // The kernel is already queued but nothing tracks it. Wait for it here so the

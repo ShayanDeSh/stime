@@ -1,4 +1,4 @@
-use stime::{Device, DeviceBuffer, LaunchConfig, Module, Stream};
+use stime::{Device, DeviceBuffer, LaunchConfig, MemoryPool, Module, Stream};
 
 mod common;
 
@@ -16,8 +16,9 @@ fn kernel_adds_two_buffers() {
     let n = 1000u32;
     let a: Vec<f32> = (0..n).map(|i| i as f32).collect();
     let b: Vec<f32> = (0..n).map(|i| 2.0 * i as f32).collect();
-    let a_dev = DeviceBuffer::from_slice(&device, &a).unwrap();
-    let b_dev = DeviceBuffer::from_slice(&device, &b).unwrap();
+    let pool = MemoryPool::system(&device).unwrap();
+    let a_dev = pool.from_slice(&a).unwrap();
+    let b_dev = pool.from_slice(&b).unwrap();
     let out_dev = DeviceBuffer::<f32>::zeroed(&device, n as usize).unwrap();
 
     // When launching the kernel and waiting for it to finish
@@ -69,8 +70,9 @@ fn kernel_outlives_its_module_handle() {
         .kernel(c"add")
         .unwrap();
     let stream = Stream::new(&device).unwrap();
-    let a = DeviceBuffer::from_slice(&device, &[1.0f32]).unwrap();
-    let b = DeviceBuffer::from_slice(&device, &[2.0f32]).unwrap();
+    let pool = MemoryPool::system(&device).unwrap();
+    let a = pool.from_slice(&[1.0f32]).unwrap();
+    let b = pool.from_slice(&[2.0f32]).unwrap();
     let out = DeviceBuffer::<f32>::zeroed(&device, 1).unwrap();
 
     // When launching it

@@ -10,6 +10,8 @@ pub enum Error {
     Driver(DriverError),
     /// A host slice did not have the same length as the device buffer.
     LengthMismatch { expected: usize, actual: usize },
+    /// A task argument lives on a different device than the stream the task was launched on.
+    DeviceMismatch,
     /// A task that has already been launched was launched again.
     TaskAlreadyLaunched,
     /// A task was waited on before being launched.
@@ -26,6 +28,7 @@ impl fmt::Display for Error {
                 f,
                 "length mismatch: buffer has {expected} elements, host slice has {actual}"
             ),
+            Error::DeviceMismatch => write!(f, "argument is on a different device than the stream"),
             Error::TaskAlreadyLaunched => write!(f, "task has already been launched"),
             Error::TaskNotLaunched => write!(f, "task has not been launched"),
             Error::WorkerStopped => write!(f, "worker thread has stopped"),
@@ -38,6 +41,7 @@ impl std::error::Error for Error {
         match self {
             Error::Driver(e) => Some(e),
             Error::LengthMismatch { .. }
+            | Error::DeviceMismatch
             | Error::TaskAlreadyLaunched
             | Error::TaskNotLaunched
             | Error::WorkerStopped => None,

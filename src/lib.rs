@@ -12,7 +12,7 @@ pub use device::Device;
 pub use error::{Error, Result};
 pub use event::Event;
 pub use kernel::{Kernel, KernelArg, LaunchConfig, Module};
-pub use memory::DeviceBuffer;
+pub use memory::{Allocator, DeviceBuffer, MemoryPool, SystemAllocator};
 pub use runtime::Runtime;
 pub use stream::Stream;
 pub use task::{KernelArgs, Task, TaskState};

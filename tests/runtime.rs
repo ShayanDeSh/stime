@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use stime::{Device, DeviceBuffer, Error, Module, Runtime, Stream, Task};
+use stime::{Device, DeviceBuffer, Error, MemoryPool, Module, Runtime, Stream, Task};
 
 mod common;
 
@@ -295,7 +295,10 @@ fn buffer_passed_through_a_chain_of_tasks_accumulates() {
     let n = len as u32;
     let stages = 25;
     let mut acc = DeviceBuffer::<f32>::zeroed(&device, len).unwrap();
-    let mut ones = DeviceBuffer::from_slice(&device, &vec![1.0f32; len]).unwrap();
+    let mut ones = MemoryPool::system(&device)
+        .unwrap()
+        .from_slice(&vec![1.0f32; len])
+        .unwrap();
 
     // When each stage's output buffer becomes the next stage's accumulator input, so the
     // stages land on different workers in turn

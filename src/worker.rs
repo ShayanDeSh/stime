@@ -128,12 +128,11 @@ impl Worker {
 
     /// Queues `task` to be launched on the worker's stream, blocking while the queue is full.
     ///
-    /// Fails with `WorkerStopped` if the worker thread has exited. Launch and kernel errors
-    /// are reported by [`TaskHandle::wait`].
+    /// Fails with `WorkerStopped` if the worker thread has exited. Launch and kernel errors,
+    /// including a buffer on the wrong device, are reported by [`TaskHandle::wait`].
     ///
     /// # Safety
-    /// - The task's arguments must match the kernel's parameter list in number, order and type.
-    /// - Every buffer in the task's arguments must live on the stream's device.
+    /// The task's arguments must match the kernel's parameter list in number, order and type.
     pub unsafe fn submit<A: KernelArgs + Send + 'static>(
         &self,
         task: Task<A>,
