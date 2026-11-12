@@ -252,3 +252,75 @@ fn dropping_a_handle_does_not_stop_the_worker() {
     let (out, _, _) = handle.wait().unwrap();
     assert_eq!(out.to_vec().unwrap(), vec![2.0; 1024]);
 }
+
+#[test]
+fn fill_outputs_feed_add_tasks_in_a_pipeline() {
+    // Given a worker and the `add` kernel loaded once for every round
+    let device = Device::get(0).unwrap();
+    let worker = worker(&device, 4);
+    let add = Module::from_ptx(&device, ADD_PTX)
+        .unwrap()
+        .kernel(c"add")
+        .unwrap();
+    let rounds = 40;
+    let len = 2048;
+    let n = len as u32;
+
+    // When every round's two `fill` tasks are submitted, then each round's filled buffers
+    // are moved into an `add` task submitted to the same worker
+    // SAFETY (all submits): the arguments match each kernel's signature and live on the
+    // worker's device.
+    let fills: Vec<_> = (0..rounds)
+        .map(|i| {
+            let x = unsafe { worker.submit(fill_task(&device, len, i as f32)) }.unwrap();
+            let y = unsafe { worker.submit(fill_task(&device, len, (2 * i + 1) as f32)) }.unwrap();
+            (x, y)
+        })
+        .collect();
+    let adds: Vec<_> = fills
+        .into_iter()
+        .map(|(x, y)| {
+            let (x, _, _) = x.wait().unwrap();
+            let (y, _, _) = y.wait().unwrap();
+            let out = DeviceBuffer::<f32>::zeroed(&device, len).unwrap();
+            let task = Task::new(add.clone(), config(n), (x, y, out, n));
+            unsafe { worker.submit(task) }.unwrap()
+        })
+        .collect();
+
+    // Then each sum is the two values its round was filled with
+    for (i, handle) in adds.into_iter().enumerate() {
+        let (_, _, out, _) = handle.wait().unwrap();
+        assert_eq!(out.to_vec().unwrap(), vec![(3 * i + 1) as f32; len]);
+    }
+}
+
+#[test]
+fn buffer_passed_through_a_chain_of_tasks_accumulates() {
+    // Given a worker, the `add` kernel, and a buffer of ones to add at every stage
+    let device = Device::get(0).unwrap();
+    let worker = worker(&device, 2);
+    let add = Module::from_ptx(&device, ADD_PTX)
+        .unwrap()
+        .kernel(c"add")
+        .unwrap();
+    let len = 1024;
+    let n = len as u32;
+    let stages = 25;
+    let mut acc = DeviceBuffer::<f32>::zeroed(&device, len).unwrap();
+    let mut ones = DeviceBuffer::from_slice(&device, &vec![1.0f32; len]).unwrap();
+
+    // When each stage's output buffer becomes the next stage's accumulator input
+    for _ in 0..stages {
+        let out = DeviceBuffer::<f32>::zeroed(&device, len).unwrap();
+        let task = Task::new(add.clone(), config(n), (acc, ones, out, n));
+        // SAFETY: the arguments match `add`'s signature and live on the worker's device.
+        let handle = unsafe { worker.submit(task) }.unwrap();
+        let (_, returned_ones, out, _) = handle.wait().unwrap();
+        acc = out;
+        ones = returned_ones;
+    }
+
+    // Then the buffer holds the number of stages in every element
+    assert_eq!(acc.to_vec().unwrap(), vec![stages as f32; len]);
+}
