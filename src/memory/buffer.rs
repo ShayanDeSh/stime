@@ -5,137 +5,7 @@ use std::sync::Arc;
 use cudarc::driver::sys::{CUdeviceptr, CUresult};
 use cudarc::driver::{CudaContext, DeviceRepr, DriverError, ValidAsZeroBits, result};
 
-use crate::{Device, Error, Result};
-
-/// A strategy for allocating and freeing untyped blocks of device memory.
-///
-/// `free` runs on the host as soon as a buffer is dropped. A freed block can be reused
-/// immediately because a [`Task`](crate::Task) owns its buffers until its kernel has finished.
-///
-/// # Safety
-/// - `alloc` must return a live pointer on `self.device()`, valid for `bytes` bytes, aligned for
-///   any [`DeviceRepr`] type, and exclusively owned by the caller until passed to `free`.
-/// - `free` is called with the exact `(ptr, bytes)` returned by `alloc`.
-pub unsafe trait Allocator: Send + Sync {
-    /// Device on which this allocator owns memory.
-    fn device(&self) -> Device;
-
-    /// Allocates `bytes` of uninitialized device memory.
-    ///
-    /// # Safety
-    /// `bytes` must be non-zero.
-    unsafe fn alloc(&self, bytes: usize) -> Result<NonZeroU64>;
-
-    /// Releases a block returned by `alloc`.
-    ///
-    /// # Safety
-    /// `ptr` must have been returned by `self.alloc(bytes)` and not freed since.
-    unsafe fn free(&self, ptr: NonZeroU64, bytes: usize);
-
-    /// Releases any cached unused memory back to the device.
-    fn trim(&self) -> Result<()> {
-        Ok(())
-    }
-}
-
-/// Allocates directly from the CUDA driver without caching.
-pub struct SystemAllocator {
-    device: Device,
-    ctx: Arc<CudaContext>,
-}
-
-impl SystemAllocator {
-    /// Creates a non-pooling driver allocator on `device`.
-    pub fn new(device: &Device) -> Result<Self> {
-        let ctx = CudaContext::new(device.ordinal())?;
-        Ok(Self {
-            device: *device,
-            ctx,
-        })
-    }
-}
-
-// SAFETY: `malloc_sync` returns driver-aligned allocations on `self.device` that stay live
-// until `free_sync`.
-unsafe impl Allocator for SystemAllocator {
-    fn device(&self) -> Device {
-        self.device
-    }
-
-    unsafe fn alloc(&self, bytes: usize) -> Result<NonZeroU64> {
-        debug_assert!(bytes > 0);
-        self.ctx.bind_to_thread()?;
-        let ptr = unsafe { result::malloc_sync(bytes) }?;
-        Ok(NonZeroU64::new(ptr).ok_or(DriverError(CUresult::CUDA_ERROR_OUT_OF_MEMORY))?)
-    }
-
-    unsafe fn free(&self, ptr: NonZeroU64, _bytes: usize) {
-        // Errors cannot be reported from `drop`.
-        if self.ctx.bind_to_thread().is_ok() {
-            let _ = unsafe { result::free_sync(ptr.get()) };
-        }
-    }
-}
-
-/// Shared handle to an [`Allocator`] that produces typed [`DeviceBuffer`]s.
-///
-/// Cloning a pool shares the allocator. Buffers return their memory to it on drop.
-#[derive(Clone)]
-pub struct MemoryPool {
-    allocator: Arc<dyn Allocator>,
-    ctx: Arc<CudaContext>,
-}
-
-impl MemoryPool {
-    /// Wraps `allocator` in a shareable pool handle.
-    pub fn new<A: Allocator + 'static>(allocator: A) -> Result<Self> {
-        let ctx = CudaContext::new(allocator.device().ordinal())?;
-        Ok(Self {
-            allocator: Arc::new(allocator),
-            ctx,
-        })
-    }
-
-    /// Creates a pool backed by [`SystemAllocator`] on `device`.
-    pub fn system(device: &Device) -> Result<Self> {
-        Self::new(SystemAllocator::new(device)?)
-    }
-
-    /// Device on which this pool allocates memory.
-    pub fn device(&self) -> Device {
-        self.allocator.device()
-    }
-
-    /// Releases any cached unused memory in the underlying allocator back to the device.
-    pub fn trim(&self) -> Result<()> {
-        self.allocator.trim()
-    }
-
-    /// Allocates a buffer of `len` elements with unspecified contents from this pool.
-    ///
-    /// # Safety
-    /// The contents are uninitialized; every element must be written before it is read back.
-    pub unsafe fn uninit<T: DeviceRepr>(&self, len: usize) -> Result<DeviceBuffer<T>> {
-        // SAFETY: the caller upholds initialization before readback.
-        unsafe { DeviceBuffer::uninit_with(Arc::clone(&self.ctx), &self.allocator, len) }
-    }
-
-    /// Allocates a buffer of `len` elements from this pool, all bytes set to zero.
-    pub fn zeroed<T: DeviceRepr + ValidAsZeroBits>(&self, len: usize) -> Result<DeviceBuffer<T>> {
-        // SAFETY: the memory is zeroed below, which is a valid bit pattern for `T`.
-        let mut buf = unsafe { self.uninit(len)? };
-        buf.zero_bytes()?;
-        Ok(buf)
-    }
-
-    /// Allocates a buffer from this pool and copies `data` into it.
-    pub fn from_slice<T: DeviceRepr>(&self, data: &[T]) -> Result<DeviceBuffer<T>> {
-        // SAFETY: every element is overwritten by the copy below.
-        let mut buf = unsafe { self.uninit(data.len())? };
-        buf.copy_from_host(data)?;
-        Ok(buf)
-    }
-}
+use crate::{Allocator, Device, Error, MemoryPool, Result};
 
 /// A fixed-size, owned allocation of `len` values of `T` in device memory.
 ///
@@ -150,7 +20,7 @@ pub struct DeviceBuffer<T: DeviceRepr> {
 }
 
 impl<T: DeviceRepr> DeviceBuffer<T> {
-    unsafe fn uninit_with(
+    pub(super) unsafe fn uninit_with(
         ctx: Arc<CudaContext>,
         allocator: &Arc<dyn Allocator>,
         len: usize,
@@ -247,7 +117,7 @@ impl<T: DeviceRepr + ValidAsZeroBits> DeviceBuffer<T> {
         MemoryPool::system(device)?.zeroed(len)
     }
 
-    fn zero_bytes(&mut self) -> Result<()> {
+    pub(super) fn zero_bytes(&mut self) -> Result<()> {
         if self.size_in_bytes() != 0 {
             self.ctx.bind_to_thread()?;
             // SAFETY: `self.ptr` is a live allocation of `self.size_in_bytes()` bytes.
